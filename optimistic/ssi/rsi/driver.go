@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"isolation_levels/optimistic/ssi"
 	"sync"
 	"time"
 )
@@ -19,20 +20,13 @@ type DataManager struct {
 	// ActiveTransactions hold the list of transactions that are not yet committed or aborted
 	ActiveTransactions map[int]*Transaction
 	// VersionStore simulates the storage of different versions of data items
-	VersionStore map[string][]*DataVersion
-}
-
-type DataVersion struct {
-	VersionID int
-	Data      string
-	CreatedBy int
-	CreatedAt time.Time
+	VersionStore map[string][]*ssi.DataVersion
 }
 
 func NewDataManager() *DataManager {
 	return &DataManager{
 		ActiveTransactions: make(map[int]*Transaction),
-		VersionStore:       make(map[string][]*DataVersion),
+		VersionStore:       make(map[string][]*ssi.DataVersion),
 	}
 }
 
@@ -56,7 +50,7 @@ func (dm *DataManager) ReadTransaction(id int, key string) {
 	}
 
 	// Simulate reading the last committed version of the data at the transaction start time
-	var lastVersion *DataVersion
+	var lastVersion *ssi.DataVersion
 	for _, v := range dm.VersionStore[key] {
 		if v.CreatedAt.Before(trans.StartTime) && (lastVersion == nil || v.CreatedAt.After(lastVersion.CreatedAt)) {
 			lastVersion = v
@@ -90,7 +84,7 @@ func (dm *DataManager) WriteTransaction(id int, key string, data string) {
 		return
 	}
 
-	newVersion := &DataVersion{
+	newVersion := &ssi.DataVersion{
 		VersionID: len(dm.VersionStore[key]) + 1,
 		Data:      data,
 		CreatedBy: id,

@@ -2,125 +2,114 @@ package main
 
 import (
 	"fmt"
+	"isolation_levels/optimistic/ssi"
 	"sync"
 	"time"
 )
 
+// Transaction represents a transaction with read and write sets.
 type Transaction struct {
-	ID        int
-	StartTime time.Time
-	Status    string
-	ReadSet   map[string]string
-	WriteSet  map[string]string
+	ID         int
+	StartTime  time.Time
+	CommitTime time.Time
+	ReadSet    map[string]bool
+	WriteSet   map[string]string
+	Status     string
 }
 
-type DataManager struct {
-	sync.Mutex
-	Transactions       map[int]*Transaction
-	LastCommit         map[string]time.Time
-	TimestampGenerator int
+// MultiVersionKVStore represents a multi-version key-value store.
+type MultiVersionKVStore struct {
+	sync.RWMutex
+	Data       map[string][]ssi.DataVersion // Map of key to a slice of data versions
+	LastCommit map[string]time.Time         // Last commit time for each key to detect conflicts
 }
 
-func NewDataManager() *DataManager {
-	return &DataManager{
-		Transactions: make(map[int]*Transaction),
-		LastCommit:   make(map[string]time.Time),
+func NewMultiVersionKVStore() *MultiVersionKVStore {
+	return &MultiVersionKVStore{
+		Data:       make(map[string][]ssi.DataVersion),
+		LastCommit: make(map[string]time.Time),
 	}
 }
 
-func (dm *DataManager) BeginTransaction(id int) {
-	dm.Lock()
-	defer dm.Unlock()
+func (store *MultiVersionKVStore) ReadTransaction(tx *Transaction, key string) string {
+	store.RLock()
+	defer store.RUnlock()
 
-	dm.Transactions[id] = &Transaction{
-		ID:        id,
-		StartTime: time.Now(),
-		Status:    "active",
-		ReadSet:   make(map[string]string),
-		WriteSet:  make(map[string]string),
+	versions, exists := store.Data[key]
+	if !exists {
+		return "" // No data exists for the key
 	}
 
-	fmt.Printf("Transaction %d started\n", id)
-}
-
-func (dm *DataManager) WriteTransaction(id int, key string, value string) {
-	dm.Lock()
-	defer dm.Unlock()
-
-	if tx, ok := dm.Transactions[id]; ok && tx.Status == "active" {
-		tx.WriteSet[key] = value
-		fmt.Printf("Transaction %d wrote %s to %s\n", id, value, key)
-	} else {
-		fmt.Printf("Transaction %d not found or not active\n", id)
+	var value string
+	// Find the most recent version before the transaction's start time
+	for i := len(versions) - 1; i >= 0; i-- {
+		if versions[i].CreatedAt.Before(tx.StartTime) {
+			value = versions[i].Data
+			break
+		}
 	}
-}
-
-func (dm *DataManager) ReadTransaction(id int, key string) string {
-	dm.Lock()
-	defer dm.Unlock()
-
-	tx, ok := dm.Transactions[id]
-	if !ok || tx.Status != "active" {
-		fmt.Printf("Transaction %d not found or not active\n", id)
-		return ""
-	}
-
-	// Check if any committed transaction has written to the key after this transaction started
-	lastCommitTime, exists := dm.LastCommit[key]
-	if exists && lastCommitTime.After(tx.StartTime) {
-		fmt.Printf("Transaction %d aborted due to read-write conflict on key %s\n", id, key)
-		tx.Status = "aborted"
-		return ""
-	}
-
-	// Simulating read value
-	value := "some_data" // This would actually come from a database
-	tx.ReadSet[key] = value
-
-	fmt.Printf("Transaction %d read %s from %s\n", id, value, key)
+	tx.ReadSet[key] = true // Mark this key as read
 	return value
 }
 
-func (dm *DataManager) CommitTransaction(id int) {
-	dm.Lock()
-	defer dm.Unlock()
+func (store *MultiVersionKVStore) WriteTransaction(tx *Transaction, key, value string) {
+	tx.WriteSet[key] = value
+}
 
-	tx, ok := dm.Transactions[id]
-	if !ok || tx.Status != "active" {
-		fmt.Printf("Transaction %d not found or not active\n", id)
-		return
-	}
+func (store *MultiVersionKVStore) CommitTransaction(tx *Transaction) bool {
+	store.Lock()
+	defer store.Unlock()
 
-	// Check for read-write conflicts before committing
+	// First, check for read-write conflicts
 	for key := range tx.ReadSet {
-		lastCommitTime, exists := dm.LastCommit[key]
-		if exists && lastCommitTime.After(tx.StartTime) {
-			fmt.Printf("Transaction %d cannot commit due to read-write conflict on key %s\n", id, key)
+		if commitTime, ok := store.LastCommit[key]; ok && commitTime.After(tx.StartTime) {
 			tx.Status = "aborted"
-			return
+			return false
 		}
 	}
 
-	// Commit all writes
+	// No conflicts, apply writes
 	commitTime := time.Now()
 	for key, value := range tx.WriteSet {
-		dm.LastCommit[key] = commitTime
-		fmt.Printf("Transaction %d committed value %s to key %s\n", id, value, key)
+		versions := store.Data[key]
+		newVersion := ssi.DataVersion{Data: value, CreatedAt: commitTime}
+		store.Data[key] = append(versions, newVersion)
+		store.LastCommit[key] = commitTime
 	}
+
+	tx.CommitTime = commitTime
 	tx.Status = "committed"
+	return true
 }
 
 func main() {
-	dm := NewDataManager()
-	dm.BeginTransaction(1)
-	dm.BeginTransaction(2)
+	store := NewMultiVersionKVStore()
 
-	dm.WriteTransaction(1, "a", "Data from T1")
-	dm.WriteTransaction(2, "a", "Data from T2")
+	tx1 := &Transaction{
+		ID:        1,
+		StartTime: time.Now(),
+		ReadSet:   make(map[string]bool),
+		WriteSet:  make(map[string]string),
+		Status:    "active",
+	}
 
-	dm.ReadTransaction(1, "a")
-	dm.ReadTransaction(2, "a")
+	tx2 := &Transaction{
+		ID:        2,
+		StartTime: time.Now().Add(time.Second), // Start a second later
+		ReadSet:   make(map[string]bool),
+		WriteSet:  make(map[string]string),
+		Status:    "active",
+	}
 
-	dm.CommitTransaction(1)
-	dm.CommitTransaction(2)
+	// Transaction 1 writes to key "a"
+	store.WriteTransaction(tx1, "a", "Data from T1")
+	// Transaction 2 writes to key "a"
+	store.WriteTransaction(tx2, "a", "Data from T2")
+
+	// Both transactions try to commit
+	committed1 := store.CommitTransaction(tx1)
+	committed2 := store.CommitTransaction(tx2)
+
+	fmt.Printf("Transaction 1 committed: %v\n", committed1)
+	fmt.Printf("Transaction 2 committed: %v\n", committed2)
 }
