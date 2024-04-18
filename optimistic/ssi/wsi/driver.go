@@ -20,14 +20,14 @@ type Transaction struct {
 // MultiVersionKVStore represents a multi-version key-value store.
 type MultiVersionKVStore struct {
 	sync.RWMutex
-	Data       map[string][]ssi.DataVersion // Map of key to a slice of data versions
-	LastCommit map[string]time.Time         // Last commit time for each key to detect conflicts
+	LastCommit   map[string]time.Time         // Last commit time for each key to detect conflicts
+	VersionStore map[string][]ssi.DataVersion // Map of key to a slice of data versions
 }
 
 func NewMultiVersionKVStore() *MultiVersionKVStore {
 	return &MultiVersionKVStore{
-		Data:       make(map[string][]ssi.DataVersion),
-		LastCommit: make(map[string]time.Time),
+		VersionStore: make(map[string][]ssi.DataVersion),
+		LastCommit:   make(map[string]time.Time),
 	}
 }
 
@@ -35,7 +35,7 @@ func (store *MultiVersionKVStore) ReadTransaction(tx *Transaction, key string) s
 	store.RLock()
 	defer store.RUnlock()
 
-	versions, exists := store.Data[key]
+	versions, exists := store.VersionStore[key]
 	if !exists {
 		return "" // No data exists for the key
 	}
@@ -71,9 +71,9 @@ func (store *MultiVersionKVStore) CommitTransaction(tx *Transaction) bool {
 	// No conflicts, apply writes
 	commitTime := time.Now()
 	for key, value := range tx.WriteSet {
-		versions := store.Data[key]
+		versions := store.VersionStore[key]
 		newVersion := ssi.DataVersion{Data: value, CreatedAt: commitTime}
-		store.Data[key] = append(versions, newVersion)
+		store.VersionStore[key] = append(versions, newVersion)
 		store.LastCommit[key] = commitTime
 	}
 

@@ -16,11 +16,9 @@ type Transaction struct {
 }
 
 type DataManager struct {
-	mu sync.Mutex
-	// ActiveTransactions hold the list of transactions that are not yet committed or aborted
-	ActiveTransactions map[int]*Transaction
-	// VersionStore simulates the storage of different versions of data items
-	VersionStore map[string][]*ssi.DataVersion
+	mu                 sync.Mutex
+	ActiveTransactions map[int]*Transaction          // ActiveTransactions hold the list of transactions that are not yet committed or aborted
+	VersionStore       map[string][]*ssi.DataVersion // VersionStore simulates the storage of different versions of data items
 }
 
 func NewDataManager() *DataManager {
