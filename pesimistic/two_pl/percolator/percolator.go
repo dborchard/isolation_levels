@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"isolation_levels/optimistic/ssi"
+
 	"sync"
 )
 
