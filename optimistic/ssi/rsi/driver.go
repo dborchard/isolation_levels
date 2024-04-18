@@ -28,14 +28,14 @@ func NewDataManager() *DataManager {
 	}
 }
 
-func (dm *DataManager) ReadTransaction(id int, key string) {
+func (dm *DataManager) ReadTransaction(id int, key string) string {
 	dm.mu.Lock()
 	defer dm.mu.Unlock()
 
 	trans, exists := dm.ActiveTransactions[id]
 	if !exists {
 		fmt.Println("Transaction does not exist")
-		return
+		return ""
 	}
 
 	// Simulate reading the last committed version of the data at the transaction start time
@@ -61,6 +61,8 @@ func (dm *DataManager) ReadTransaction(id int, key string) {
 	} else {
 		fmt.Println("No data found")
 	}
+
+	return lastVersion.Data
 }
 
 func (dm *DataManager) WriteTransaction(id int, key string, data string) {
