@@ -17,21 +17,21 @@ type Transaction struct {
 	Status     string
 }
 
-// MultiVersionKVStore represents a multi-version key-value store.
-type MultiVersionKVStore struct {
+// DataManager represents a multi-version key-value store.
+type DataManager struct {
 	sync.RWMutex
 	LastCommit   map[string]time.Time         // Last commit time for each key to detect conflicts
 	VersionStore map[string][]ssi.DataVersion // Map of key to a slice of data versions
 }
 
-func NewMultiVersionKVStore() *MultiVersionKVStore {
-	return &MultiVersionKVStore{
+func NewDataManager() *DataManager {
+	return &DataManager{
 		VersionStore: make(map[string][]ssi.DataVersion),
 		LastCommit:   make(map[string]time.Time),
 	}
 }
 
-func (store *MultiVersionKVStore) ReadTransaction(tx *Transaction, key string) string {
+func (store *DataManager) ReadTransaction(tx *Transaction, key string) string {
 	store.RLock()
 	defer store.RUnlock()
 
@@ -52,11 +52,11 @@ func (store *MultiVersionKVStore) ReadTransaction(tx *Transaction, key string) s
 	return value
 }
 
-func (store *MultiVersionKVStore) WriteTransaction(tx *Transaction, key, value string) {
+func (store *DataManager) WriteTransaction(tx *Transaction, key, value string) {
 	tx.WriteSet[key] = value
 }
 
-func (store *MultiVersionKVStore) CommitTransaction(tx *Transaction) bool {
+func (store *DataManager) CommitTransaction(tx *Transaction) bool {
 	store.Lock()
 	defer store.Unlock()
 
@@ -83,7 +83,7 @@ func (store *MultiVersionKVStore) CommitTransaction(tx *Transaction) bool {
 }
 
 func main() {
-	store := NewMultiVersionKVStore()
+	store := NewDataManager()
 
 	tx1 := &Transaction{
 		ID:        1,

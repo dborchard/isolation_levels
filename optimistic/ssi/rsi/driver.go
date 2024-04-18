@@ -28,15 +28,6 @@ func NewDataManager() *DataManager {
 	}
 }
 
-func (dm *DataManager) BeginTransaction(id int) {
-	dm.mu.Lock()
-	defer dm.mu.Unlock()
-	dm.ActiveTransactions[id] = &Transaction{
-		ID:        id,
-		StartTime: time.Now(),
-	}
-}
-
 func (dm *DataManager) ReadTransaction(id int, key string) {
 	dm.mu.Lock()
 	defer dm.mu.Unlock()
@@ -126,6 +117,15 @@ func (dm *DataManager) CommitTransaction(id int) {
 func (dm *DataManager) abortTransaction(id int) {
 	fmt.Printf("Transaction %d aborted due to conflict.\n", id)
 	delete(dm.ActiveTransactions, id)
+}
+
+func (dm *DataManager) BeginTransaction(id int) {
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+	dm.ActiveTransactions[id] = &Transaction{
+		ID:        id,
+		StartTime: time.Now(),
+	}
 }
 
 func main() {
