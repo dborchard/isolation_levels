@@ -31,38 +31,33 @@ func NewDataManager() *DataManager {
 	}
 }
 
-func (store *DataManager) ReadTransaction(tx *Transaction, key string) string {
-	store.RLock()
-	defer store.RUnlock()
+func (dm *DataManager) ReadTransaction(tx *Transaction, key string) string {
+	dm.RLock()
+	defer dm.RUnlock()
 
-	versions, exists := store.VersionStore[key]
-	if !exists {
-		return "" // No data exists for the key
-	}
-
-	var value string
-	// Find the most recent version before the transaction's start time
-	for i := len(versions) - 1; i >= 0; i-- {
-		if versions[i].CreatedAt.Before(tx.StartTime) {
-			value = versions[i].Data
-			break
+	// Simulate reading the last committed version of the data at the transaction start time
+	var lastVersion *ssi.DataVersion
+	for _, v := range dm.VersionStore[key] {
+		if v.CreatedAt.Before(tx.StartTime) && (lastVersion == nil || v.CreatedAt.After(lastVersion.CreatedAt)) {
+			lastVersion = &v
 		}
 	}
+
 	tx.ReadSet[key] = true // Mark this key as read
-	return value
+	return lastVersion.Data
 }
 
-func (store *DataManager) WriteTransaction(tx *Transaction, key, value string) {
+func (dm *DataManager) WriteTransaction(tx *Transaction, key, value string) {
 	tx.WriteSet[key] = value
 }
 
-func (store *DataManager) CommitTransaction(tx *Transaction) bool {
-	store.Lock()
-	defer store.Unlock()
+func (dm *DataManager) CommitTransaction(tx *Transaction) bool {
+	dm.Lock()
+	defer dm.Unlock()
 
 	// First, check for read-write conflicts
 	for key := range tx.ReadSet {
-		if commitTime, ok := store.LastCommit[key]; ok && commitTime.After(tx.StartTime) {
+		if commitTime, ok := dm.LastCommit[key]; ok && commitTime.After(tx.StartTime) {
 			tx.Status = "aborted"
 			return false
 		}
@@ -71,10 +66,10 @@ func (store *DataManager) CommitTransaction(tx *Transaction) bool {
 	// No conflicts, apply writes
 	commitTime := time.Now()
 	for key, value := range tx.WriteSet {
-		versions := store.VersionStore[key]
+		versions := dm.VersionStore[key]
 		newVersion := ssi.DataVersion{Data: value, CreatedAt: commitTime}
-		store.VersionStore[key] = append(versions, newVersion)
-		store.LastCommit[key] = commitTime
+		dm.VersionStore[key] = append(versions, newVersion)
+		dm.LastCommit[key] = commitTime
 	}
 
 	tx.CommitTime = commitTime
