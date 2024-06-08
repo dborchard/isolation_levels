@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"isolation_levels/isolation_levels/d_serializable/optimistic/ssi"
+	"isolation_levels/isolation_levels/e_serializable/optimistic/ssi"
 	"sync"
 )
 
